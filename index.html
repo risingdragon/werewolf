@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>狼人杀法官助手</title>
+    <style>
+        :root {
+            --bg-color: #121212;
+            --card-bg: #1e1e1e;
+            --text-main: #e0e0e0;
+            --text-sub: #a0a0a0;
+            --wolf-color: #ff5252;
+            --god-color: #448aff;
+            --villager-color: #69f0ae;
+            --dead-color: #757575;
+            --highlight: #ffd740;
+            --accent: #7c4dff;
+        }
+
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Header */
+        header {
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: #2d2d2d;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+            z-index: 10;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .day-counter {
+            background-color: var(--accent);
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        /* Main Grid */
+        main {
+            flex: 1;
+            padding: 15px;
+            overflow-y: auto;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            align-content: start;
+        }
+
+        .player-card {
+            background-color: var(--card-bg);
+            border-radius: 12px;
+            aspect-ratio: 3/4;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            transition: all 0.2s;
+            border: 1px solid #333;
+            cursor: pointer;
+        }
+
+        .player-card:active {
+            transform: scale(0.96);
+        }
+
+        .player-card.dead {
+            opacity: 0.5;
+            background-color: #1a1a1a;
+            border-color: #444;
+        }
+
+        .player-card.dead .avatar {
+            filter: grayscale(100%);
+            text-decoration: line-through;
+        }
+
+        .player-id {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: var(--text-main);
+        }
+
+        .role-text {
+            font-size: 12px;
+            color: var(--text-sub);
+            text-align: center;
+            min-height: 1.2em;
+        }
+
+        .sheriff-badge {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            width: 24px;
+            height: 24px;
+            background-color: var(--highlight);
+            color: #000;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+            display: none;
+        }
+
+        .player-card.is-sheriff .sheriff-badge {
+            display: flex;
+        }
+
+        .status-dots {
+            position: absolute;
+            bottom: 8px;
+            display: flex;
+            gap: 4px;
+        }
+
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        /* Logs Area */
+        .logs-panel {
+            height: 120px;
+            background-color: #1a1a1a;
+            border-top: 1px solid #333;
+            padding: 10px;
+            overflow-y: auto;
+            font-size: 12px;
+            color: #888;
+        }
+
+        .log-entry {
+            margin-bottom: 4px;
+            line-height: 1.4;
+        }
+
+        .log-time {
+            color: #555;
+            margin-right: 5px;
+        }
+
+        /* Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: flex-end;
+            /* Bottom sheet style */
+            z-index: 100;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+        }
+
+        .modal-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .modal-content {
+            background-color: #252525;
+            width: 100%;
+            max-width: 600px;
+            border-radius: 20px 20px 0 0;
+            padding: 20px;
+            transform: translateY(100%);
+            transition: transform 0.3s;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-overlay.active .modal-content {
+            transform: translateY(0);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .modal-title {
+            font-size: 20px;
+            font-weight: bold;
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            color: var(--text-sub);
+            font-size: 24px;
+            padding: 0 10px;
+        }
+
+        /* Action Groups */
+        .action-group {
+            margin-bottom: 20px;
+        }
+
+        .group-title {
+            font-size: 12px;
+            color: var(--text-sub);
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .btn-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+        }
+
+        .action-btn {
+            background-color: #333;
+            border: 1px solid #444;
+            color: var(--text-main);
+            padding: 10px 5px;
+            border-radius: 8px;
+            font-size: 14px;
+            text-align: center;
+            transition: all 0.2s;
+        }
+
+        .action-btn.active {
+            background-color: var(--accent);
+            border-color: var(--accent);
+            color: white;
+        }
+
+        /* Role Colors */
+        .btn-role-wolf.active {
+            background-color: var(--wolf-color);
+            border-color: var(--wolf-color);
+        }
+
+        .btn-role-god.active {
+            background-color: var(--god-color);
+            border-color: var(--god-color);
+        }
+
+        .btn-role-villager.active {
+            background-color: var(--villager-color);
+            border-color: var(--villager-color);
+            color: #121212;
+        }
+
+        /* State Colors */
+        .btn-state-dead.active {
+            background-color: var(--dead-color);
+            border-color: var(--dead-color);
+        }
+
+        .btn-sheriff.active {
+            background-color: var(--highlight);
+            border-color: var(--highlight);
+            color: black;
+        }
+
+        .control-bar {
+            padding: 10px 15px;
+            display: flex;
+            gap: 10px;
+            background: #1a1a1a;
+        }
+
+        .btn-main {
+            flex: 1;
+            padding: 12px;
+            border-radius: 8px;
+            border: none;
+            font-weight: bold;
+            font-size: 16px;
+        }
+
+        .btn-reset {
+            background-color: #333;
+            color: #ff5252;
+        }
+
+        .btn-config {
+            background-color: #333;
+            color: var(--text-main);
+        }
+    </style>
+</head>
+
+<body>
+
+    <header>
+        <h1>法官助手</h1>
+        <div class="day-counter" onclick="app.nextDay()">第 <span id="day-num">1</span> 天</div>
+        <div style="font-size: 20px; padding: 5px;" onclick="app.confirmReset()">↺</div>
+    </header>
+
+    <main id="player-grid">
+        <!-- Generated by JS -->
+    </main>
+
+    <div class="logs-panel" id="logs">
+        <div class="log-entry">欢迎使用狼人杀法官助手，点击卡片开始记录。</div>
+    </div>
+
+    <!-- Modal -->
+    <div class="modal-overlay" id="modal" onclick="if(event.target === this) app.closeModal()">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title" id="modal-title">1号玩家</div>
+                <button class="close-btn" onclick="app.closeModal()">×</button>
+            </div>
+
+            <div class="action-group">
+                <div class="group-title">核心状态</div>
+                <div class="btn-grid" style="grid-template-columns: repeat(2, 1fr);">
+                    <button class="action-btn btn-state-dead" id="btn-dead" onclick="app.toggleStatus('dead')">💀
+                        确认死亡</button>
+                    <button class="action-btn btn-sheriff" id="btn-sheriff" onclick="app.toggleSheriff()">⭐ 警徽</button>
+                </div>
+            </div>
+
+            <div class="action-group">
+                <div class="group-title">标记身份</div>
+                <div class="btn-grid">
+                    <button class="action-btn btn-role-wolf" data-role="wolf"
+                        onclick="app.setRole('wolf', '狼人')">狼人</button>
+                    <button class="action-btn btn-role-wolf" data-role="wolf-king"
+                        onclick="app.setRole('wolf-king', '狼王')">狼王</button>
+                    <button class="action-btn btn-role-god" data-role="seer"
+                        onclick="app.setRole('seer', '预言家')">预言家</button>
+                    <button class="action-btn btn-role-god" data-role="witch"
+                        onclick="app.setRole('witch', '女巫')">女巫</button>
+                    <button class="action-btn btn-role-god" data-role="hunter"
+                        onclick="app.setRole('hunter', '猎人')">猎人</button>
+                    <button class="action-btn btn-role-god" data-role="guard"
+                        onclick="app.setRole('guard', '守卫')">守卫</button>
+                    <button class="action-btn btn-role-god" data-role="idiot"
+                        onclick="app.setRole('idiot', '白痴')">白痴</button>
+                    <button class="action-btn btn-role-villager" data-role="villager"
+                        onclick="app.setRole('villager', '平民')">平民</button>
+                </div>
+            </div>
+
+            <div class="action-group">
+                <div class="group-title">状态标签</div>
+                <div class="btn-grid">
+                    <button class="action-btn" data-tag="gold" id="tag-gold"
+                        onclick="app.toggleTag('gold', '#ffd740')">金水</button>
+                    <button class="action-btn" data-tag="kill" id="tag-kill"
+                        onclick="app.toggleTag('kill', '#ff5252')">查杀</button>
+                    <button class="action-btn" data-tag="poison" id="tag-poison"
+                        onclick="app.toggleTag('poison', '#9c27b0')">中毒</button>
+                    <button class="action-btn" data-tag="shot" id="tag-shot"
+                        onclick="app.toggleTag('shot', '#607d8b')">吃刀</button>
+                    <button class="action-btn" data-tag="boom" id="tag-boom"
+                        onclick="app.toggleTag('boom', '#ff9800')">自爆</button>
+                    <button class="action-btn" data-tag="vote" id="tag-vote"
+                        onclick="app.toggleTag('vote', '#795548')">抗推</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const app = {
+            data: {
+                day: 1,
+                playerCount: 12,
+                players: [],
+                currentId: null
+            },
+
+            init() {
+                this.loadState();
+                if (this.data.players.length === 0) {
+                    this.resetPlayers(12);
+                }
+                this.render();
+                this.updateDayDisplay();
+            },
+
+            resetPlayers(count) {
+                this.data.players = Array.from({ length: count }, (_, i) => ({
+                    id: i + 1,
+                    roleKey: null,
+                    roleName: '',
+                    isDead: false,
+                    isSheriff: false,
+                    tags: [] // {key: 'gold', color: '#...'}
+                }));
+                this.data.day = 1;
+                this.log('新的一局开始了，共 ' + count + ' 人');
+                this.saveState();
+            },
+
+            render() {
+                const grid = document.getElementById('player-grid');
+                grid.innerHTML = this.data.players.map(p => `
+                <div class="player-card ${p.isDead ? 'dead' : ''} ${p.isSheriff ? 'is-sheriff' : ''}" 
+                     onclick="app.openModal(${p.id})"
+                     style="${this.getCardBorder(p)}">
+                    <div class="sheriff-badge">警</div>
+                    <div class="player-id">${p.id}</div>
+                    <div class="role-text" style="color: ${this.getRoleColor(p.roleKey)}">${p.roleName || '未标记'}</div>
+                    <div class="status-dots">
+                        ${p.tags.map(t => `<div class="dot" style="background-color: ${t.color}"></div>`).join('')}
+                    </div>
+                </div>
+            `).join('');
+            },
+
+            getRoleColor(key) {
+                if (!key) return '#a0a0a0';
+                if (key.includes('wolf')) return 'var(--wolf-color)';
+                if (['villager'].includes(key)) return 'var(--villager-color)';
+                return 'var(--god-color)';
+            },
+
+            getCardBorder(p) {
+                // Optional: highlight card border based on role
+                if (p.roleKey && !p.isDead) {
+                    return `border-color: ${this.getRoleColor(p.roleKey)}40; box-shadow: 0 0 10px ${this.getRoleColor(p.roleKey)}10;`;
+                }
+                return '';
+            },
+
+            openModal(id) {
+                this.data.currentId = id;
+                const p = this.data.players[id - 1];
+
+                document.getElementById('modal-title').innerText = `${id}号玩家`;
+                document.getElementById('modal').classList.add('active');
+
+                // Update button states
+                this.updateModalButtons(p);
+            },
+
+            updateModalButtons(p) {
+                // Reset all active classes
+                document.querySelectorAll('.action-btn').forEach(btn => btn.classList.remove('active'));
+
+                // Set active states
+                if (p.isDead) document.getElementById('btn-dead').classList.add('active');
+                if (p.isSheriff) document.getElementById('btn-sheriff').classList.add('active');
+
+                // Role buttons
+                if (p.roleKey) {
+                    const roleBtn = document.querySelector(`.action-btn[data-role="${p.roleKey}"]`);
+                    if (roleBtn) roleBtn.classList.add('active');
+                }
+
+                // Tags
+                p.tags.forEach(tag => {
+                    const btn = document.querySelector(`.action-btn[data-tag="${tag.key}"]`);
+                    if (btn) btn.classList.add('active');
+                });
+
+                // Update dead button text
+                document.getElementById('btn-dead').innerText = p.isDead ? '💀 已死亡 (点击复活)' : '💀 确认死亡';
+            },
+
+            closeModal() {
+                document.getElementById('modal').classList.remove('active');
+                this.data.currentId = null;
+            },
+
+            // Actions
+            toggleStatus(status) {
+                if (!this.data.currentId) return;
+                const p = this.data.players[this.data.currentId - 1];
+
+                if (status === 'dead') {
+                    p.isDead = !p.isDead;
+                    this.log(`${p.id}号玩家 ${p.isDead ? '确认死亡' : '复活'}`);
+                }
+
+                this.saveAndRender();
+                this.updateModalButtons(p);
+            },
+
+            toggleSheriff() {
+                if (!this.data.currentId) return;
+                const currentId = this.data.currentId;
+                const p = this.data.players[currentId - 1];
+
+                // If already sheriff, remove it
+                if (p.isSheriff) {
+                    p.isSheriff = false;
+                    this.log(`${p.id}号玩家 移交警徽`);
+                } else {
+                    // Remove from others
+                    this.data.players.forEach(pl => pl.isSheriff = false);
+                    p.isSheriff = true;
+                    this.log(`${p.id}号玩家 当选警长`);
+                }
+
+                this.saveAndRender();
+                this.updateModalButtons(p);
+            },
+
+            setRole(key, name) {
+                if (!this.data.currentId) return;
+                const p = this.data.players[this.data.currentId - 1];
+
+                if (p.roleKey === key) {
+                    // Toggle off
+                    p.roleKey = null;
+                    p.roleName = '';
+                } else {
+                    p.roleKey = key;
+                    p.roleName = name;
+                    this.log(`${p.id}号玩家 标记为 [${name}]`);
+                }
+
+                this.saveAndRender();
+                this.updateModalButtons(p);
+            },
+
+            toggleTag(key, color) {
+                if (!this.data.currentId) return;
+                const p = this.data.players[this.data.currentId - 1];
+
+                const idx = p.tags.findIndex(t => t.key === key);
+                if (idx > -1) {
+                    p.tags.splice(idx, 1);
+                } else {
+                    p.tags.push({ key, color });
+                    this.log(`${p.id}号玩家 标记 [${document.getElementById('tag-' + key).innerText}]`);
+                }
+
+                this.saveAndRender();
+                this.updateModalButtons(p);
+            },
+
+            nextDay() {
+                this.data.day++;
+                this.updateDayDisplay();
+                this.log(`--- 进入第 ${this.data.day} 天 ---`);
+                this.saveState();
+            },
+
+            updateDayDisplay() {
+                document.getElementById('day-num').innerText = this.data.day;
+            },
+
+            confirmReset() {
+                if (confirm('确定要重置整局游戏吗？所有记录将丢失。')) {
+                    const count = prompt('请输入玩家人数', '12');
+                    const num = parseInt(count);
+                    if (num && num > 0 && num <= 20) {
+                        this.resetPlayers(num);
+                        this.render();
+                        this.updateDayDisplay();
+                    }
+                }
+            },
+
+            log(msg) {
+                const logs = document.getElementById('logs');
+                const time = new Date().toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' });
+                const entry = document.createElement('div');
+                entry.className = 'log-entry';
+                entry.innerHTML = `<span class="log-time">[${time}]</span> ${msg}`;
+                logs.insertBefore(entry, logs.firstChild);
+            },
+
+            saveAndRender() {
+                this.saveState();
+                this.render();
+            },
+
+            saveState() {
+                localStorage.setItem('wolf_judge_data', JSON.stringify(this.data));
+            },
+
+            loadState() {
+                const saved = localStorage.getItem('wolf_judge_data');
+                if (saved) {
+                    try {
+                        this.data = JSON.parse(saved);
+                    } catch (e) {
+                        console.error('Load failed', e);
+                    }
+                }
+            }
+        };
+
+        // Init
+        app.init();
+    </script>
+
+</body>
+
+</html>
