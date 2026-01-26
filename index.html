@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>狼人杀法官助手</title>
+    <title>狼人杀助手</title>
     <style>
         :root {
             --bg-color: #121212;
@@ -61,6 +61,56 @@
             font-size: 14px;
             font-weight: bold;
             cursor: pointer;
+        }
+
+        /* Witch Potions */
+        .witch-status {
+            display: flex;
+            gap: 10px;
+            margin-right: 10px;
+        }
+
+        .potion-icon {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 2px solid transparent;
+            position: relative;
+        }
+
+        .potion-antidote {
+            background-color: #2d2d2d;
+            color: #69f0ae;
+            /* Green */
+            border-color: #69f0ae;
+        }
+
+        .potion-poison {
+            background-color: #2d2d2d;
+            color: #9c27b0;
+            /* Purple */
+            border-color: #9c27b0;
+        }
+
+        .potion-icon.used {
+            background-color: #1a1a1a;
+            color: #555;
+            border-color: #444;
+            text-decoration: line-through;
+        }
+
+        .potion-label {
+            position: absolute;
+            bottom: -16px;
+            font-size: 9px;
+            color: #aaa;
+            white-space: nowrap;
         }
 
         /* Main Grid */
@@ -140,15 +190,38 @@
 
         .status-dots {
             position: absolute;
-            bottom: 8px;
+            bottom: 4px;
             display: flex;
             gap: 4px;
+            flex-wrap: wrap;
+            justify-content: center;
+            width: 90%;
+            pointer-events: none;
         }
 
         .dot {
             width: 8px;
             height: 8px;
             border-radius: 50%;
+        }
+
+        .tag-badge {
+            background-color: #333;
+            color: #000;
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-size: 10px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+            margin-right: 4px;
+        }
+
+        /* Source Selector */
+        #source-selector .modal-content {
+            height: auto;
+            max-height: 60vh;
         }
 
         /* Logs Area */
@@ -327,7 +400,15 @@
 <body>
 
     <header>
-        <h1>法官助手</h1>
+        <h1>狼人杀助手</h1>
+        <div class="witch-status">
+            <div class="potion-icon potion-antidote" id="potion-antidote" onclick="app.togglePotion('antidote')">
+                💊<span class="potion-label">解药</span>
+            </div>
+            <div class="potion-icon potion-poison" id="potion-poison" onclick="app.togglePotion('poison')">
+                ☠️<span class="potion-label">毒药</span>
+            </div>
+        </div>
         <div class="day-counter" onclick="app.nextDay()">第 <span id="day-num">1</span> 天</div>
         <div style="font-size: 20px; padding: 5px;" onclick="app.confirmReset()">↺</div>
     </header>
@@ -384,6 +465,8 @@
                 <div class="btn-grid">
                     <button class="action-btn" data-tag="gold" id="tag-gold"
                         onclick="app.toggleTag('gold', '#ffd740')">金水</button>
+                    <button class="action-btn" data-tag="silver" id="tag-silver"
+                        onclick="app.toggleTag('silver', '#00bcd4')">银水</button>
                     <button class="action-btn" data-tag="kill" id="tag-kill"
                         onclick="app.toggleTag('kill', '#ff5252')">查杀</button>
                     <button class="action-btn" data-tag="poison" id="tag-poison"
@@ -399,13 +482,27 @@
         </div>
     </div>
 
+    <!-- Source Selector Modal -->
+    <div class="modal-overlay" id="source-selector" onclick="if(event.target === this) app.closeSourceSelector()">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">谁发的金水？</div>
+                <button class="close-btn" onclick="app.closeSourceSelector()">×</button>
+            </div>
+            <div class="btn-grid" id="source-grid" style="grid-template-columns: repeat(4, 1fr);">
+                <!-- JS Generated -->
+            </div>
+        </div>
+    </div>
+
     <script>
         const app = {
             data: {
                 day: 1,
                 playerCount: 12,
                 players: [],
-                currentId: null
+                currentId: null,
+                witchPotions: { antidote: true, poison: true }
             },
 
             init() {
@@ -414,6 +511,7 @@
                     this.resetPlayers(12);
                 }
                 this.render();
+                this.updateWitchStatusUI();
                 this.updateDayDisplay();
             },
 
@@ -427,8 +525,10 @@
                     tags: [] // {key: 'gold', color: '#...'}
                 }));
                 this.data.day = 1;
+                this.data.witchPotions = { antidote: true, poison: true };
                 this.log('新的一局开始了，共 ' + count + ' 人');
                 this.saveState();
+                this.updateWitchStatusUI();
             },
 
             render() {
@@ -441,7 +541,12 @@
                     <div class="player-id">${p.id}</div>
                     <div class="role-text" style="color: ${this.getRoleColor(p.roleKey)}">${p.roleName || '未标记'}</div>
                     <div class="status-dots">
-                        ${p.tags.map(t => `<div class="dot" style="background-color: ${t.color}"></div>`).join('')}
+                        ${p.tags.map(t => {
+                    if (t.key === 'gold' && t.sourceId) {
+                        return `<div class="tag-badge" style="background-color: ${t.color}">G:${t.sourceId}</div>`;
+                    }
+                    return `<div class="dot" style="background-color: ${t.color}"></div>`;
+                }).join('')}
                     </div>
                 </div>
             `).join('');
@@ -556,6 +661,12 @@
 
             toggleTag(key, color) {
                 if (!this.data.currentId) return;
+
+                if (key === 'gold') {
+                    this.openSourceSelector();
+                    return;
+                }
+
                 const p = this.data.players[this.data.currentId - 1];
 
                 const idx = p.tags.findIndex(t => t.key === key);
@@ -568,6 +679,79 @@
 
                 this.saveAndRender();
                 this.updateModalButtons(p);
+            },
+
+            openSourceSelector() {
+                const modal = document.getElementById('source-selector');
+                const grid = document.getElementById('source-grid');
+                const p = this.data.players[this.data.currentId - 1];
+
+                grid.innerHTML = this.data.players.map(player => {
+                    const hasGoldFrom = p.tags.some(t => t.key === 'gold' && t.sourceId === player.id);
+                    const isSelf = player.id === p.id;
+                    return `
+                        <button class="action-btn ${hasGoldFrom ? 'active' : ''}" 
+                                style="${hasGoldFrom ? 'background-color: #ffd740; color: #000; border-color: #ffd740;' : ''} ${isSelf ? 'opacity: 0.3;' : ''}"
+                                onclick="app.toggleGold(${player.id})"
+                                ${isSelf ? 'disabled' : ''}>
+                            ${player.id}号
+                        </button>
+                    `;
+                }).join('');
+
+                modal.classList.add('active');
+            },
+
+            closeSourceSelector() {
+                document.getElementById('source-selector').classList.remove('active');
+            },
+
+            toggleGold(sourceId) {
+                if (!this.data.currentId) return;
+                const p = this.data.players[this.data.currentId - 1];
+
+                const idx = p.tags.findIndex(t => t.key === 'gold' && t.sourceId === sourceId);
+
+                if (idx > -1) {
+                    p.tags.splice(idx, 1);
+                    this.log(`${p.id}号玩家 移除 [${sourceId}号发的金水]`);
+                } else {
+                    p.tags.push({ key: 'gold', color: '#ffd740', sourceId: sourceId });
+                    this.log(`${p.id}号玩家 获得 [${sourceId}号发的金水]`);
+                }
+
+                this.saveAndRender();
+                this.openSourceSelector(); // Refresh state
+                this.updateModalButtons(p);
+            },
+
+            togglePotion(type) {
+                if (type === 'antidote') {
+                    this.data.witchPotions.antidote = !this.data.witchPotions.antidote;
+                    this.log(`女巫 ${this.data.witchPotions.antidote ? '恢复' : '使用'}了解药`);
+                } else if (type === 'poison') {
+                    this.data.witchPotions.poison = !this.data.witchPotions.poison;
+                    this.log(`女巫 ${this.data.witchPotions.poison ? '恢复' : '使用'}了毒药`);
+                }
+                this.saveState();
+                this.updateWitchStatusUI();
+            },
+
+            updateWitchStatusUI() {
+                const antidoteBtn = document.getElementById('potion-antidote');
+                const poisonBtn = document.getElementById('potion-poison');
+
+                if (this.data.witchPotions.antidote) {
+                    antidoteBtn.classList.remove('used');
+                } else {
+                    antidoteBtn.classList.add('used');
+                }
+
+                if (this.data.witchPotions.poison) {
+                    poisonBtn.classList.remove('used');
+                } else {
+                    poisonBtn.classList.add('used');
+                }
             },
 
             nextDay() {
@@ -615,7 +799,12 @@
                 const saved = localStorage.getItem('wolf_judge_data');
                 if (saved) {
                     try {
-                        this.data = JSON.parse(saved);
+                        const loadedData = JSON.parse(saved);
+                        // Backwards compatibility: ensure witchPotions exists
+                        if (!loadedData.witchPotions) {
+                            loadedData.witchPotions = { antidote: true, poison: true };
+                        }
+                        this.data = loadedData;
                     } catch (e) {
                         console.error('Load failed', e);
                     }
